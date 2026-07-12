@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>シンプルアラーム</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+    h1 { font-size: 1.25rem; margin-bottom: 1.5rem; font-weight: 600; }
+    .clock {
+      font-size: 3rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 2px;
+      margin-bottom: 1.5rem;
+    }
+    .row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    input[type="time"] {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid #334155;
+      color: var(--text);
+      font-size: 1.25rem;
+      padding: 0.6rem;
+      border-radius: 10px;
+      text-align: center;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 0.7rem 1rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    .btn-set { background: var(--accent); color: #0f172a; width: 100%; }
+    .btn-cancel { background: var(--danger); color: #0f172a; width: 100%; }
+    .status {
+      margin-top: 1.25rem;
+      color: var(--muted);
+      min-height: 1.5em;
+      font-size: 0.95rem;
+    }
+    .status.active { color: var(--accent); font-weight: 600; }
+    .ringing { animation: flash 0.6s infinite alternate; }
+    @keyframes flash {
+      from { background: var(--card); }
+      to { background: #7f1d1d; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <h1>⏰ シンプルアラーム</h1>
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="row">
+      <input type="time" id="alarmTime">
+    </div>
+    <button class="btn-set" id="setBtn">アラームをセット</button>
+    <div class="status" id="status">アラームは設定されていません</div>
+  </div>
+
+  <script>
+    const clockEl = document.getElementById('clock');
+    const statusEl = document.getElementById('status');
+    const setBtn = document.getElementById('setBtn');
+    const alarmInput = document.getElementById('alarmTime');
+    const card = document.getElementById('card');
+
+    let alarmTime = null;   // "HH:MM"
+    let triggered = false;
+    let audioCtx = null;
+    let ringInterval = null;
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    function tick() {
+      const now = new Date();
+      const hh = pad(now.getHours());
+      const mm = pad(now.getMinutes());
+      const ss = pad(now.getSeconds());
+      clockEl.textContent = `${hh}:${mm}:${ss}`;
+
+      if (alarmTime && !triggered && `${hh}:${mm}` === alarmTime && ss === '00') {
+        triggerAlarm();
+      }
+    }
+
+    function beep() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    }
+
+    function triggerAlarm() {
+      triggered = true;
+      card.classList.add('ringing');
+      statusEl.textContent = '⏰ 時間です！';
+      statusEl.classList.add('active');
+      beep();
+      ringInterval = setInterval(beep, 800);
+      switchToCancel();
+    }
+
+    function switchToCancel() {
+      setBtn.textContent = '停止 / 解除';
+      setBtn.className = 'btn-cancel';
+    }
+
+    function switchToSet() {
+      setBtn.textContent = 'アラームをセット';
+      setBtn.className = 'btn-set';
+    }
+
+    function setAlarm() {
+      const val = alarmInput.value;
+      if (!val) {
+        statusEl.textContent = '時刻を入力してください';
+        return;
+      }
+      // Unlock audio on user gesture
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      alarmTime = val;
+      triggered = false;
+      statusEl.textContent = `${val} にアラームをセットしました`;
+      statusEl.classList.add('active');
+      switchToCancel();
+    }
+
+    function cancelAlarm() {
+      alarmTime = null;
+      triggered = false;
+      if (ringInterval) { clearInterval(ringInterval); ringInterval = null; }
+      card.classList.remove('ringing');
+      statusEl.textContent = 'アラームは設定されていません';
+      statusEl.classList.remove('active');
+      switchToSet();
+    }
+
+    setBtn.addEventListener('click', () => {
+      if (alarmTime === null && !triggered) {
+        setAlarm();
+      } else {
+        cancelAlarm();
+      }
+    });
+
+    setInterval(tick, 250);
+    tick();
+  </script>
+</body>
+</html>
